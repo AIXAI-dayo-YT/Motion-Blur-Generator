@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ultra Smooth Motion Blur</title>
+    <title>Motion Blur Professional</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
@@ -16,25 +16,22 @@
     }
     </script>
 </head>
-<body class="bg-slate-950 text-slate-200">
+<body class="bg-[#0a0a0c] text-slate-200">
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
         import React, { useState, useRef, useEffect } from 'react';
         import ReactDOM from 'react-dom/client';
 
-        const FPS_OPTIONS = [30, 60, 120, 240, 480];
-
         const App = () => {
             const [file, setFile] = useState(null);
             const [status, setStatus] = useState('IDLE');
-            const [options, setOptions] = useState({ fps: 60, blurStrength: 50 });
+            const [options, setOptions] = useState({ fps: 60, blurStrength: 60 });
             const [videoSrc, setVideoSrc] = useState("");
             const [downloadUrl, setDownloadUrl] = useState(null);
 
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
-            const requestRef = useRef();
 
             const handleFile = (e) => {
                 const f = e.target.files?.[0];
@@ -46,93 +43,107 @@
                 }
             };
 
-            const startProcessing = () => {
+            const startProcessing = async () => {
                 const video = videoRef.current;
                 const canvas = canvasRef.current;
                 if (!video || !canvas) return;
 
+                setStatus('PROCESSING');
+                setDownloadUrl(null);
+
+                // 動画サイズに合わせる
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
-                const ctx = canvas.getContext('2d', { alpha: false });
-                
-                setStatus('PROCESSING');
+                const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+
                 const chunks = [];
                 const stream = canvas.captureStream(options.fps);
                 const recorder = new MediaRecorder(stream, { 
                     mimeType: 'video/webm;codecs=vp9',
-                    videoBitsPerSecond: 50000000 // 50Mbpsの超高画質
+                    videoBitsPerSecond: 40000000 
                 });
 
                 recorder.ondataavailable = (e) => chunks.push(e.data);
                 recorder.onstop = () => {
-                    setDownloadUrl(URL.createObjectURL(new Blob(chunks, { type: 'video/webm' })));
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    setDownloadUrl(URL.createObjectURL(blob));
                     setStatus('COMPLETED');
                 };
 
-                // 強度を「何枚重ねるか」に変換（1〜20枚程度）
-                // FPSが高いほど、より多くの枚数を重ねないと滑らかに見えない
-                const frameStackCount = Math.max(2, Math.floor((options.blurStrength / 100) * (options.fps / 10)));
-
                 video.currentTime = 0;
-                video.play();
+                await video.play();
                 recorder.start();
 
-                const render = () => {
+                // ブラーの計算式を根本から変更
+                // 強度が高いほど「上書きする不透明度」を下げる = 過去のフレームが長く残る
+                // 100% = ほとんど上書きしない（残像MAX）, 0% = 即上書き（ブラーなし）
+                const alpha = Math.max(0.02, 1 - (options.blurStrength / 100));
+
+                const processFrame = () => {
                     if (video.paused || video.ended) {
-                        if (recorder.state === 'recording') recorder.stop();
+                        recorder.stop();
                         return;
                     }
 
-                    // --- 滑らかさの核：多重露光（Multi-Exposure）シミュレーション ---
-                    // 1フレーム描画するごとに、少し前のフレームを重ねて描画し続ける
+                    // 描画モードを強制的に「重ね合わせ」にする
                     ctx.globalCompositeOperation = 'source-over';
-                    ctx.globalAlpha = 1.0;
-                    ctx.drawImage(video, 0, 0); // 最新フレーム
+                    ctx.globalAlpha = alpha; // ここが滑らかさの鍵
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                    ctx.globalCompositeOperation = 'lighter';
-                    // 強度が高いほど、前のフレームを強く残す
-                    ctx.globalAlpha = options.blurStrength / 200; 
-                    
-                    // 前回の内容を保持しつつ、新しい画像を「混ぜる」
-                    // これにより、FPSが高いほど残像が細かく繋がり、ヌルヌルになります
-                    requestRef.current = requestAnimationFrame(render);
+                    // 動画の次のフレームが準備できたら実行
+                    video.requestVideoFrameCallback(processFrame);
                 };
-                render();
+
+                // requestVideoFrameCallback が使えないブラウザ用のフォールバック
+                if ('requestVideoFrameCallback' in video) {
+                    video.requestVideoFrameCallback(processFrame);
+                } else {
+                    const legacyLoop = () => {
+                        if (video.paused || video.ended) { recorder.stop(); return; }
+                        ctx.globalAlpha = alpha;
+                        ctx.drawImage(video, 0, 0);
+                        requestAnimationFrame(legacyLoop);
+                    };
+                    legacyLoop();
+                }
             };
 
             return (
-                <div class="max-w-5xl mx-auto p-10 space-y-8">
-                    <header class="text-center">
-                        <h1 class="text-5xl font-black italic tracking-tighter text-blue-500 mb-2">ULTRA BLUR</h1>
-                        <p class="text-slate-400">FPSを高くすると残像がより細かく、滑らかになります</p>
-                    </header>
-                    
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                        <div class="space-y-6 bg-slate-900 p-8 rounded-2xl border border-slate-800">
-                            <input type="file" accept="video/*" onChange={handleFile} class="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"/>
-                            
-                            <div class="space-y-4">
-                                <label class="block text-sm font-bold text-blue-400">ターゲットFPS（滑らかさの密度）: {options.fps}</label>
-                                <div class="grid grid-cols-5 gap-2">
-                                    {FPS_OPTIONS.map(f => (
-                                        <button key={f} onClick={()=>setOptions({...options, fps:f})} class={`py-2 rounded-lg font-mono ${options.fps===f?'bg-blue-600 text-white shadow-lg shadow-blue-900':'bg-slate-800 text-slate-500'}`}>{f}</button>
-                                    ))}
-                                </div>
-                                
-                                <label class="block text-sm font-bold text-blue-400">モーションブラー強度: {options.blurStrength}%</label>
-                                <input type="range" value={options.blurStrength} onChange={(e)=>setOptions({...options, blurStrength:e.target.value})} class="w-full h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500" />
+                <div class="max-w-4xl mx-auto p-6 space-y-8">
+                    <div class="text-center space-y-2">
+                        <h1 class="text-4xl font-black bg-gradient-to-r from-blue-500 to-cyan-400 bg-clip-text text-transparent">MOTION BLUR PRO</h1>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="space-y-6">
+                            <div class="p-8 border-2 border-dashed border-slate-800 rounded-3xl bg-slate-900/50 hover:border-blue-500/50 transition-all">
+                                <input type="file" accept="video/*" onChange={handleFile} class="w-full text-sm cursor-pointer file:bg-blue-600 file:border-0 file:rounded-full file:text-white file:px-4 file:py-2" />
                             </div>
 
-                            <button onClick={status === 'COMPLETED' ? ()=>window.location.reload() : startProcessing} disabled={!file || status === 'PROCESSING'} class="w-full py-4 bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-600 hover:to-indigo-600 rounded-xl font-black text-xl tracking-widest transition-all shadow-xl disabled:opacity-30">
-                                {status === 'PROCESSING' ? "RENDERING..." : status === 'COMPLETED' ? "RELOAD" : "GENERATE"}
-                            </button>
+                            <div class="space-y-6 bg-slate-900/80 p-6 rounded-3xl border border-slate-800">
+                                <div>
+                                    <label class="text-xs font-bold text-slate-500 uppercase">FPS (Density): {options.fps}</label>
+                                    <div class="flex gap-2 mt-2">
+                                        {[60, 120, 240, 480].map(f => (
+                                            <button key={f} onClick={()=>setOptions({...options, fps:f})} class={`flex-1 py-2 rounded-xl text-sm font-bold ${options.fps===f?'bg-blue-600':'bg-slate-800 text-slate-400'}`}>{f}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-500 uppercase">Strength (Trail): {options.blurStrength}%</label>
+                                    <input type="range" min="0" max="98" value={options.blurStrength} onChange={(e)=>setOptions({...options, blurStrength:parseInt(e.target.value)})} class="w-full mt-2 h-2 bg-slate-800 rounded-lg appearance-none accent-blue-500" />
+                                </div>
+                                <button onClick={status==='COMPLETED' ? ()=>window.location.reload() : startProcessing} disabled={!file || status==='PROCESSING'} class="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-30 rounded-2xl font-black text-lg transition-all shadow-lg shadow-blue-900/20">
+                                    {status==='PROCESSING' ? 'PROCESSING...' : status==='COMPLETED' ? 'NEW VIDEO' : 'GENERATE'}
+                                </button>
+                            </div>
                         </div>
 
-                        <div class="relative group">
-                            <video ref={videoRef} src={videoSrc} class="hidden" muted />
-                            <canvas ref={canvasRef} class="w-full rounded-2xl bg-black shadow-2xl border-4 border-slate-800 aspect-video object-contain" />
+                        <div class="relative">
+                            <video ref={videoRef} src={videoSrc} class="hidden" muted playsInline />
+                            <canvas ref={canvasRef} class="w-full rounded-3xl bg-black aspect-video object-contain shadow-2xl border border-slate-800" />
                             {downloadUrl && (
-                                <a href={downloadUrl} download="ultra-blur.webm" class="absolute inset-0 m-auto w-48 h-14 bg-green-600 hover:bg-green-500 text-white flex items-center justify-center rounded-full font-bold shadow-2xl transition-all transform hover:scale-110">
+                                <a href={downloadUrl} download="blur-output.webm" class="absolute inset-0 m-auto w-max h-max px-8 py-4 bg-green-600 rounded-full font-bold shadow-2xl hover:scale-105 transition-all">
                                     DOWNLOAD WEBM
                                 </a>
                             )}
