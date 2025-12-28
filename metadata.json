@@ -1,0 +1,5 @@
+{
+  "name": "Motion Blur Generator",
+  "description": "動画にモーションブラー（残像効果）を追加し、フレームレートを変更できるWebアプリケーション",
+  "requestFramePermissions": []
+}
