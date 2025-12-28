@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Motion Blur Generator</title>
+    <title>Motion Blur Generator Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
@@ -20,130 +20,127 @@
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useRef, useEffect, useCallback } from 'react';
+        import React, { useState, useRef, useEffect } from 'react';
         import ReactDOM from 'react-dom/client';
 
-        // === 1. types.ts の内容 ===
-        const ProcessingStatus = {
-            IDLE: 'IDLE',
-            PROCESSING: 'PROCESSING',
-            COMPLETED: 'COMPLETED',
-            ERROR: 'ERROR'
-        };
-        const FPS_OPTIONS = [30, 60, 120, 240, 480, 960];
+        const ProcessingStatus = { IDLE: 'IDLE', PROCESSING: 'PROCESSING', COMPLETED: 'COMPLETED' };
+        const FPS_OPTIONS = [30, 60, 120, 240];
 
-        // === 2. components/Dropzone.tsx の内容 ===
-        const Dropzone = ({ onFileSelect }) => {
-            const [isDragging, setIsDragging] = useState(false);
-            const handleDrag = (e) => { e.preventDefault(); setIsDragging(e.type === 'dragover'); };
-            const handleDrop = (e) => {
-                e.preventDefault(); setIsDragging(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file?.type.startsWith('video/')) onFileSelect(file);
-            };
-            return (
-                <div onDragOver={handleDrag} onDragLeave={handleDrag} onDrop={handleDrop}
-                    className={`w-full h-64 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all ${isDragging ? 'border-blue-500 bg-blue-500/10' : 'border-slate-600 hover:border-blue-400 hover:bg-slate-800'}`}>
-                    <input type="file" accept="video/*" onChange={(e) => e.target.files?.[0] && onFileSelect(e.target.files[0])} className="hidden" id="video-upload" />
-                    <label htmlFor="video-upload" className="flex flex-col items-center cursor-pointer">
-                        <svg className="h-12 w-12 text-slate-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        <span className="text-lg font-medium text-slate-300">動画をドラッグ＆ドロップ</span>
-                    </label>
-                </div>
-            );
-        };
-
-        // === 3. components/ControlPanel.tsx の内容 ===
-        const ControlPanel = ({ fps, setFps, blurStrength, setBlurStrength, status, onStart, onReset, hasFile }) => {
-            const isProcessing = status === ProcessingStatus.PROCESSING;
-            return (
-                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-6">
-                    <div>
-                        <label className="text-sm font-medium text-slate-400 block mb-2">ターゲットFPS: {fps}</label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {FPS_OPTIONS.map(v => (
-                                <button key={v} onClick={() => setFps(v)} disabled={isProcessing}
-                                    className={`py-2 rounded-md text-sm font-bold transition-all ${fps === v ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}>{v}</button>
-                            ))}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="text-sm font-medium text-slate-400 block mb-2">ブラー強度: {blurStrength}%</label>
-                        <input type="range" min="0" max="100" value={blurStrength} onChange={(e) => setBlurStrength(parseInt(e.target.value))} disabled={isProcessing} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500" />
-                    </div>
-                    <button onClick={status === ProcessingStatus.COMPLETED ? onReset : onStart} disabled={!hasFile && status !== ProcessingStatus.COMPLETED} className={`w-full py-3 rounded-lg font-bold transition-all ${hasFile || status === ProcessingStatus.COMPLETED ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-500'}`}>
-                        {isProcessing ? '処理中...' : status === ProcessingStatus.COMPLETED ? 'リセット' : '生成開始'}
-                    </button>
-                </div>
-            );
-        };
-
-        // === 4. components/Processor.tsx の内容 ===
-        const Processor = ({ file, options, status, setStatus }) => {
-            const videoRef = useRef(null);
-            const canvasRef = useRef(null);
-            const [videoSrc, setVideoSrc] = useState("");
-            const [downloadUrl, setDownloadUrl] = useState(null);
-
-            useEffect(() => {
-                const url = URL.createObjectURL(file);
-                setVideoSrc(url);
-                return () => URL.revokeObjectURL(url);
-            }, [file]);
-
-            useEffect(() => {
-                if (status === ProcessingStatus.PROCESSING) {
-                    const video = videoRef.current;
-                    const canvas = canvasRef.current;
-                    const ctx = canvas.getContext('2d');
-                    const chunks = [];
-                    const stream = canvas.captureStream(options.fps);
-                    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-
-                    recorder.ondataavailable = (e) => chunks.push(e.data);
-                    recorder.onstop = () => {
-                        setDownloadUrl(URL.createObjectURL(new Blob(chunks, { type: 'video/webm' })));
-                        setStatus(ProcessingStatus.COMPLETED);
-                    };
-
-                    video.play();
-                    recorder.start();
-                    
-                    const render = () => {
-                        if (video.paused || video.ended) { recorder.stop(); return; }
-                        ctx.globalAlpha = 1 - (options.blurStrength / 100);
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        requestAnimationFrame(render);
-                    };
-                    render();
-                }
-            }, [status]);
-
-            return (
-                <div className="space-y-4">
-                    <video ref={videoRef} src={videoSrc} className="hidden" muted />
-                    <canvas ref={canvasRef} width="1280" height="720" className="w-full rounded-xl bg-black" />
-                    {downloadUrl && <a href={downloadUrl} download="output.webm" className="block text-center p-3 bg-green-600 rounded-lg font-bold">動画を保存する</a>}
-                </div>
-            );
-        };
-
-        // === 5. App.tsx & index.tsx の内容 ===
         const App = () => {
             const [file, setFile] = useState(null);
             const [status, setStatus] = useState(ProcessingStatus.IDLE);
             const [options, setOptions] = useState({ fps: 60, blurStrength: 50 });
+            const [videoSrc, setVideoSrc] = useState("");
+            const [downloadUrl, setDownloadUrl] = useState(null);
+
+            const videoRef = useRef(null);
+            const canvasRef = useRef(null);
+            const mediaRecorderRef = useRef(null);
+            const requestRef = useRef();
+
+            const handleFile = (e) => {
+                const selectedFile = e.target.files?.[0];
+                if (selectedFile) {
+                    setFile(selectedFile);
+                    setVideoSrc(URL.createObjectURL(selectedFile));
+                    setStatus(ProcessingStatus.IDLE);
+                    setDownloadUrl(null);
+                }
+            };
+
+            const startProcessing = () => {
+                const video = videoRef.current;
+                const canvas = canvasRef.current;
+                if (!video || !canvas) return;
+
+                // 画質向上：動画のオリジナルサイズに合わせる
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                
+                setStatus(ProcessingStatus.PROCESSING);
+                const chunks = [];
+                const stream = canvas.captureStream(options.fps);
+                
+                // ビットレートを上げて画質を維持
+                const recorder = new MediaRecorder(stream, { 
+                    mimeType: 'video/webm;codecs=vp9',
+                    videoBitsPerSecond: 25000000 // 25Mbps
+                });
+
+                recorder.ondataavailable = (e) => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'video/webm' });
+                    setDownloadUrl(URL.createObjectURL(blob));
+                    setStatus(ProcessingStatus.COMPLETED);
+                };
+
+                video.currentTime = 0;
+                video.play();
+                recorder.start();
+                mediaRecorderRef.current = recorder;
+
+                // 強度MAXでも真っ暗にならないように計算式を修正 (0.01〜0.3の範囲に制限)
+                const alpha = Math.max(0.01, (100 - options.blurStrength) / 330);
+
+                const render = () => {
+                    if (video.paused || video.ended) {
+                        if (recorder.state !== 'inactive') recorder.stop();
+                        return;
+                    }
+                    ctx.globalAlpha = alpha;
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    requestRef.current = requestAnimationFrame(render);
+                };
+                render();
+            };
+
+            const reset = () => {
+                cancelAnimationFrame(requestRef.current);
+                if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
+                setFile(null);
+                setVideoSrc("");
+                setDownloadUrl(null);
+                setStatus(ProcessingStatus.IDLE);
+            };
 
             return (
-                <div className="max-w-4xl mx-auto p-8 space-y-8">
-                    <h1 className="text-3xl font-bold text-center">Motion Blur Generator</h1>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-4">
-                            <Dropzone onFileSelect={setFile} />
-                            <ControlPanel {...options} setFps={(f)=>setOptions({...options, fps:f})} setBlurStrength={(s)=>setOptions({...options, blurStrength:s})} status={status} onStart={()=>setStatus(ProcessingStatus.PROCESSING)} onReset={()=>{setFile(null); setStatus(ProcessingStatus.IDLE);}} hasFile={!!file} />
+                <div class="max-w-4xl mx-auto p-8 space-y-8">
+                    <h1 class="text-3xl font-bold text-center text-blue-400">High-Quality Motion Blur</h1>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div class="space-y-4">
+                            <div class="p-6 border-2 border-dashed border-slate-700 rounded-xl text-center">
+                                <input type="file" accept="video/*" onChange={handleFile} class="hidden" id="v-up" />
+                                <label htmlFor="v-up" class="cursor-pointer text-blue-300 hover:text-white">
+                                    {file ? file.name : "動画を選択してください"}
+                                </label>
+                            </div>
+
+                            <div class="bg-slate-900 p-4 rounded-xl space-y-4">
+                                <label class="block text-sm">ターゲットFPS: {options.fps}</label>
+                                <div class="flex gap-2">
+                                    {FPS_OPTIONS.map(f => (
+                                        <button key={f} onClick={()=>setOptions({...options, fps:f})} class={`flex-1 py-1 rounded ${options.fps===f?'bg-blue-600':'bg-slate-700'}`}>{f}</button>
+                                    ))}
+                                </div>
+                                <label class="block text-sm">ブラー強度: {options.blurStrength}%</label>
+                                <input type="range" value={options.blurStrength} onChange={(e)=>setOptions({...options, blurStrength:e.target.value})} class="w-full accent-blue-500" />
+                                
+                                <button onClick={status === ProcessingStatus.COMPLETED ? reset : startProcessing} disabled={!file || status === ProcessingStatus.PROCESSING} class="w-full py-3 bg-blue-600 rounded-lg font-bold disabled:opacity-50">
+                                    {status === ProcessingStatus.PROCESSING ? "処理中..." : status === ProcessingStatus.COMPLETED ? "リセット" : "生成開始"}
+                                </button>
+                            </div>
                         </div>
-                        <div>
-                            {file ? <Processor file={file} options={options} status={status} setStatus={setStatus} /> : <div className="h-64 border-2 border-slate-800 rounded-xl flex items-center justify-center text-slate-500">動画がありません</div>}
+
+                        <div class="space-y-4">
+                            <video ref={videoRef} src={videoSrc} class="hidden" muted playsInline />
+                            <canvas ref={canvasRef} class="w-full rounded-xl bg-black aspect-video object-contain border border-slate-800" />
+                            {downloadUrl && (
+                                <a href={downloadUrl} download="motion-blur.webm" class="block text-center p-3 bg-green-600 rounded-lg font-bold animate-bounce">
+                                    動画を保存（高品質）
+                                </a>
+                            )}
                         </div>
                     </div>
                 </div>
