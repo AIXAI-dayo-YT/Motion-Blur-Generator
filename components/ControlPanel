@@ -1,0 +1,132 @@
+import React from 'react';
+import { FPS_OPTIONS, ProcessingStatus } from '../types';
+
+interface ControlPanelProps {
+  fps: number;
+  setFps: (fps: number) => void;
+  blurStrength: number;
+  setBlurStrength: (val: number) => void;
+  status: ProcessingStatus;
+  onStart: () => void;
+  onReset: () => void;
+  hasFile: boolean;
+}
+
+const ControlPanel: React.FC<ControlPanelProps> = ({
+  fps,
+  setFps,
+  blurStrength,
+  setBlurStrength,
+  status,
+  onStart,
+  onReset,
+  hasFile
+}) => {
+  const isProcessing = status === ProcessingStatus.PROCESSING;
+
+  return (
+    <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.532 1.532 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.532 1.532 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+          </svg>
+          設定
+        </h3>
+        
+        {/* FPS Selection */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            出力フレームレート (FPS)
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {FPS_OPTIONS.map((option) => (
+              <button
+                key={option}
+                onClick={() => setFps(option)}
+                disabled={isProcessing}
+                className={`
+                  py-2 px-3 rounded-lg text-sm font-medium transition-colors
+                  ${fps === option 
+                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' 
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}
+                  ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}
+                `}
+              >
+                {option} FPS
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            ※ 高FPS (240以上) はブラウザの負荷により実際の再生速度や処理時間が不安定になる場合があります。
+          </p>
+        </div>
+
+        {/* Blur Strength */}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-slate-300">
+              ブラー強度 (残像の強さ)
+            </label>
+            <span className="text-blue-400 font-bold">{blurStrength}%</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="95"
+            step="5"
+            value={blurStrength}
+            onChange={(e) => setBlurStrength(Number(e.target.value))}
+            disabled={isProcessing}
+            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          />
+          <div className="flex justify-between text-xs text-slate-500 mt-1">
+            <span>弱い (クリア)</span>
+            <span>強い (残像大)</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="pt-4 border-t border-slate-700">
+        {!hasFile ? (
+           <div className="text-center text-slate-500 py-2">動画を選択してください</div>
+        ) : (
+          <div className="flex gap-3">
+             {status === ProcessingStatus.PROCESSING ? (
+               <button
+                  disabled
+                  className="w-full py-3 bg-blue-600/50 text-white rounded-lg font-bold flex justify-center items-center gap-2 cursor-wait"
+                >
+                  <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  処理中...
+                </button>
+             ) : (
+                <>
+                   {status === ProcessingStatus.COMPLETED ? (
+                      <button
+                        onClick={onReset}
+                        className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-bold transition-colors"
+                      >
+                        リセット
+                      </button>
+                   ) : (
+                      <button
+                        onClick={onStart}
+                        className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg font-bold shadow-lg shadow-blue-500/30 transition-all transform hover:scale-[1.02]"
+                      >
+                        処理開始 (録画)
+                      </button>
+                   )}
+                </>
+             )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ControlPanel;
