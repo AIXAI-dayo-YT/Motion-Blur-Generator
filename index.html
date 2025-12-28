@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Motion Blur Pro - Stable Build</title>
+    <title>Motion Blur Ultra - Fast & Precise</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="importmap">
@@ -16,24 +16,23 @@
     }
     </script>
 </head>
-<body class="bg-[#050505] text-slate-200">
+<body class="bg-[#050505] text-white">
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
-        import React, { useState, useRef, useEffect } from 'react';
+        import React, { useState, useRef } from 'react';
         import ReactDOM from 'react-dom/client';
 
         const App = () => {
             const [file, setFile] = useState(null);
             const [status, setStatus] = useState('IDLE');
-            const [options, setOptions] = useState({ fps: 60, blurStrength: 80 });
+            const [options, setOptions] = useState({ fps: 60, blurStrength: 85, playbackRate: 2.0 });
             const [videoSrc, setVideoSrc] = useState("");
             const [downloadUrl, setDownloadUrl] = useState(null);
             const [progress, setProgress] = useState(0);
 
             const videoRef = useRef(null);
             const canvasRef = useRef(null);
-            const recorderRef = useRef(null);
 
             const handleFile = (e) => {
                 const f = e.target.files?.[0];
@@ -52,36 +51,28 @@
                 if (!video || !canvas) return;
 
                 setStatus('PROCESSING');
-                setDownloadUrl(null);
-                setProgress(0);
-
+                
+                // 動画の「真のサイズ」をキャンバスに適用
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
                 const ctx = canvas.getContext('2d', { alpha: false });
 
                 const chunks = [];
-                // 画質を維持しつつ安定させる設定
                 const stream = canvas.captureStream(options.fps);
                 const recorder = new MediaRecorder(stream, { 
                     mimeType: 'video/webm;codecs=vp9',
-                    videoBitsPerSecond: 30000000 
+                    videoBitsPerSecond: 40000000 
                 });
 
-                recorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) chunks.push(e.data);
-                };
-
+                recorder.ondataavailable = (e) => e.data.size > 0 && chunks.push(e.data);
                 recorder.onstop = () => {
-                    const blob = new Blob(chunks, { type: 'video/webm' });
-                    const url = URL.createObjectURL(blob);
-                    setDownloadUrl(url);
+                    setDownloadUrl(URL.createObjectURL(new Blob(chunks, { type: 'video/webm' })));
                     setStatus('COMPLETED');
                 };
 
-                recorderRef.current = recorder;
                 video.currentTime = 0;
-                
-                // 確実に再生が始まってから録画を開始
+                // 倍速再生で処理時間を短縮
+                video.playbackRate = options.playbackRate;
                 video.play();
                 recorder.start();
 
@@ -93,13 +84,12 @@
                         return;
                     }
 
-                    // 進行度の計算
-                    const p = Math.floor((video.currentTime / video.duration) * 100);
-                    setProgress(p);
+                    setProgress(Math.floor((video.currentTime / video.duration) * 100));
 
+                    // モーションブラー合成
                     ctx.globalCompositeOperation = 'source-over';
                     ctx.globalAlpha = alpha;
-                    ctx.drawImage(video, 0, 0);
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
                     requestAnimationFrame(renderLoop);
                 };
@@ -107,53 +97,49 @@
             };
 
             return (
-                <div class="max-w-4xl mx-auto p-6 space-y-8">
-                    <h1 class="text-3xl font-black text-center tracking-widest text-blue-500">MOTION BLUR GENERATOR</h1>
+                <div class="max-w-4xl mx-auto p-6 space-y-6">
+                    <h1 class="text-2xl font-black text-blue-500 italic">FAST MOTION BLUR v2</h1>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div class="space-y-6">
-                            <div class="p-8 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/30 flex flex-col items-center">
-                                <input type="file" accept="video/*" onChange={handleFile} class="text-sm file:bg-blue-600 file:border-0 file:rounded-lg file:text-white file:px-4 file:py-2 cursor-pointer" />
+                        <div class="space-y-4">
+                            <div class="p-6 border-2 border-dashed border-slate-800 rounded-xl bg-slate-900/50">
+                                <input type="file" accept="video/*" onChange={handleFile} class="w-full text-xs" />
                             </div>
 
-                            <div class="bg-slate-900 p-6 rounded-2xl border border-slate-800 space-y-6">
+                            <div class="bg-slate-900 p-5 rounded-xl border border-slate-800 space-y-5">
                                 <div>
-                                    <p class="text-xs font-bold text-slate-500 mb-2">FPS: {options.fps}</p>
-                                    <div class="grid grid-cols-4 gap-2">
-                                        {[60, 120, 240, 480].map(f => (
-                                            <button key={f} onClick={()=>setOptions({...options, fps:f})} class={`py-2 rounded-lg text-sm font-bold ${options.fps===f?'bg-blue-600':'bg-slate-800'}`}>{f}</button>
+                                    <p class="text-[10px] font-bold text-slate-500 mb-2 uppercase">Rendering Speed: x{options.playbackRate}</p>
+                                    <div class="grid grid-cols-3 gap-2">
+                                        {[1.0, 2.0, 4.0].map(r => (
+                                            <button key={r} onClick={()=>setOptions({...options, playbackRate:r})} class={`py-2 rounded-lg text-xs font-bold ${options.playbackRate===r?'bg-blue-600':'bg-slate-800'}`}>{r}x Speed</button>
                                         ))}
                                     </div>
+                                    <p class="text-[9px] text-slate-500 mt-1">※PCの性能が低い場合は1.0xを推奨</p>
                                 </div>
+                                
                                 <div>
-                                    <p class="text-xs font-bold text-slate-500 mb-2">BLUR STRENGTH: {options.blurStrength}%</p>
-                                    <input type="range" min="0" max="99" value={options.blurStrength} onChange={(e)=>setOptions({...options, blurStrength:parseInt(e.target.value)})} class="w-full h-2 bg-slate-800 rounded-lg appearance-none accent-blue-500" />
+                                    <p class="text-[10px] font-bold text-slate-500 mb-2 uppercase">Blur Strength: {options.blurStrength}%</p>
+                                    <input type="range" min="0" max="99" value={options.blurStrength} onChange={(e)=>setOptions({...options, blurStrength:parseInt(e.target.value)})} class="w-full accent-blue-500" />
                                 </div>
 
-                                {status === 'PROCESSING' && (
-                                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                                        <div class="bg-blue-500 h-full transition-all duration-300" style={{width: `${progress}%`}}></div>
-                                    </div>
-                                )}
-
-                                <button onClick={status==='COMPLETED' ? ()=>window.location.reload() : startProcessing} disabled={!file || status==='PROCESSING'} class="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-20 rounded-xl font-bold transition-all">
-                                    {status==='PROCESSING' ? `PROCESSING (${progress}%)` : status==='COMPLETED' ? 'RELOAD' : 'GENERATE'}
+                                <button onClick={status==='COMPLETED' ? ()=>window.location.reload() : startProcessing} disabled={!file || status==='PROCESSING'} class="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/40">
+                                    {status==='PROCESSING' ? `PROCESSING... ${progress}%` : status==='COMPLETED' ? 'RESET' : 'START RENDERING'}
                                 </button>
                             </div>
                         </div>
 
-                        <div class="relative group">
-                            <video ref={videoRef} src={videoSrc} class="hidden" muted playsInline />
-                            <canvas ref={canvasRef} class="w-full rounded-2xl bg-black aspect-video border border-slate-800 shadow-2xl" />
-                            
-                            {status === 'COMPLETED' && downloadUrl && (
-                                <div class="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center rounded-2xl space-y-4">
-                                    <p class="font-bold text-green-400 text-xl">FINISH!</p>
-                                    <a href={downloadUrl} download="blur_video.webm" class="px-10 py-4 bg-green-600 hover:bg-green-500 text-white rounded-full font-black text-lg shadow-xl transform hover:scale-105 transition-all">
-                                        DOWNLOAD NOW
-                                    </a>
-                                </div>
-                            )}
+                        <div class="space-y-4">
+                            <div class="relative rounded-xl overflow-hidden bg-black border border-slate-800 shadow-2xl aspect-video">
+                                <video ref={videoRef} src={videoSrc} class="hidden" muted />
+                                <canvas ref={canvasRef} class="w-full h-full object-contain" />
+                                
+                                {status === 'COMPLETED' && (
+                                    <div class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-6 text-center">
+                                        <p class="text-green-400 font-bold mb-4">Rendering Complete!</p>
+                                        <a href={downloadUrl} download="motion_blur_fast.webm" class="bg-white text-black px-8 py-3 rounded-full font-black hover:bg-blue-400 transition-all">DOWNLOAD</a>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
