@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import Dropzone from './components/Dropzone';
-import ControlPanel from './components/ControlPanel';
-import Processor from './components/Processor';
-import { ProcessingOptions, ProcessingStatus } from './types';
+import Dropzone from './components/Dropzone.tsx';       
+import ControlPanel from './components/ControlPanel.tsx'; 
+import Processor from './components/Processor.tsx';       
+import { ProcessingOptions, ProcessingStatus } from './types.ts'; 
 
 const App: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
